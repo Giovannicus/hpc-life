@@ -1,0 +1,14 @@
+# executables
+life_serial
+life_omp
+life_mpi
+life_hybrid
+
+# build artifacts
+*.o
+
+# heavy output files
+*.out
+*.dat
+*.log
+__pycache__/
