@@ -12,4 +12,7 @@ clean:
 run_standard: life_serial
 	./life_serial 1024 100
 
-.PHONY: all clean run_standard
+bench: life_serial
+	./scripts/bench.sh
+
+.PHONY: all clean run_standard bench

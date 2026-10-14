@@ -68,18 +68,28 @@ La versione seriale è **deterministica**: lanciata più volte con gli stessi
 
 | n | steps | celle vive (riferimento) |
 |---|---|---|
-| 1024 | 100 | da annotare dopo la prima esecuzione |
+| 512 | 100 | 25790 |
+| 1024 | 100 | 100277 |
+| 2048 | 100 | 397219 |
+| 4096 | 100 | 1599426 |
+
+Il valore di riferimento principale è `./life_serial 1024 100` → **100277**.
+Il conteggio è identico in tutte le 5 ripetizioni di ogni `n`.
 
 ## Risultati
 
-Tempi della versione seriale (da compilare):
+Tempi della versione seriale (`-O2`, 100 passi, minimo di 5 ripetizioni):
 
-| n | tempo (s) |
-|---|---|
-| 512 | |
-| 1024 | |
-| 2048 | |
-| 4096 | |
+| n | tempo (s) | celle vive |
+|---|---|---|
+| 512 | 0.153 | 25790 |
+| 1024 | 0.624 | 100277 |
+| 2048 | 2.617 | 397219 |
+| 4096 | 10.914 | 1599426 |
+
+I tempi variano da una ripetizione all'altra e da una sessione all'altra,
+per questo si usa il minimo. Le misure si rilanciano con `make bench`
+(script `scripts/bench.sh`).
 
 Grafici di speedup ed efficienza: verranno aggiunti in `results/`.
 

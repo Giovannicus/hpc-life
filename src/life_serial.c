@@ -38,7 +38,6 @@ int main(int argc, char *argv[])
     int n = (argc > 1) ? atoi(argv[1]) : 1024;
     int steps = (argc > 2) ? atoi(argv[2]) : 100;
 
-    printf("n = %d, steps = %d\n", n, steps);
     size_t size = (size_t)n * n;
     unsigned char *cur = malloc(size);
     unsigned char *next = malloc(size);
@@ -63,9 +62,9 @@ int main(int argc, char *argv[])
     for (size_t k = 0; k < size; k++){
         alive += cur[k];
     }
-    printf("Living cells: %ld\n", alive);
-    printf("Time taken: %f seconds\n", end - start);
-    printf("Time per cell and step: %f nanoseconds\n", (end - start) / size / steps *1e9);
+
+    printf("n=%d steps=%d tempo=%.3fs vive=%ld ns_per_cella=%.3f\n",
+        n, steps, end - start, alive, (end - start) / size / steps * 1e9);
     free(cur);
     free(next);
 
