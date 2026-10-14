@@ -12,12 +12,12 @@ static double now_seconds(void){
 
 static void step(unsigned char *cur, unsigned char *next, int n){
     for (int i = 0; i < n; i++){
-        int up = (i - 1 + n) % n;
-        int down = (i + 1) % n;
+        int up = (i == 0) ? n -1 : i - 1;
+        int down = (i == n-1) ? 0 : i + 1;
 
         for (int j = 0; j < n; j++){
-            int left = (j - 1 + n) % n;
-            int right = (j + 1) % n;
+            int left = (j == 0) ? n - 1 : j - 1;
+            int right = (j == n-1) ? 0 : j + 1;
             
             size_t alive = cur[up * n + left] + cur[up * n + j] + cur[up * n + right] +
                                   cur[i * n + left] + cur[i * n + right] +

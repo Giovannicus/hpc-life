@@ -54,9 +54,16 @@ Il valore di riferimento per `./life_serial 1024 100` va annotato nel README.
 
 ## Stato attuale
 - [x] Repo locale creata, utente configurato in locale
-- [ ] Tappa 1: compilare ed eseguire `life_serial`, annotare tempi e celle vive
-  per n = 512, 1024, 2048, 4096 (100 passi)
-- [ ] Primo commit, collegamento a GitHub, tag `tappa-1-seriale`
+- [x] Tappa 1: `life_serial` compilato ed eseguito, tempi e celle vive annotati
+  nel README per n = 512, 1024, 2048, 4096 (100 passi)
+- [x] Primo commit e collegamento a GitHub (tag `tappa-1-seriale` non creato,
+  scelta dell'utente)
+- [ ] Tappa 2 (in corso):
+  - [x] `scripts/bench.sh` + `make bench` (5 ripetizioni, tempo minimo,
+    controllo celle vive)
+  - [x] eliminati i `%` dal ciclo interno di `step` (speedup ~1.34x)
+  - [ ] cache
+  - [ ] profiling
 
 ## Comandi utili
 ```bash
@@ -71,5 +78,6 @@ Se `src/life_serial.c` non esiste ancora, crealo: griglia n x n di
 `unsigned char`, due buffer `cur`/`next` scambiati a ogni passo, vicini
 calcolati con modulo (bordi toroidali), regola: nasce con 3 vicini vivi,
 sopravvive con 2 o 3. Argomenti da riga di comando: `n` (default 1024) e
-`steps` (default 100). Stampa:
-`n=... steps=... tempo=... s vive=...`.
+`steps` (default 100). Stampa una sola riga:
+`n=... steps=... tempo=...s vive=... ns_per_cella=...`
+(campi separati da spazi: `$3` tempo, `$4` vive; `bench.sh` li legge così).

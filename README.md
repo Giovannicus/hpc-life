@@ -25,9 +25,9 @@ ideale da parallelizzare.
 
 | Tappa | Contenuto | Concetto HPC | Stato |
 |---|---|---|---|
-| 0 | Setup: Git, gcc, Makefile | Ambiente e strumenti | in corso |
+| 0 | Setup: Git, gcc, Makefile | Ambiente e strumenti | completata |
 | 1 | Versione seriale | Riferimento di correttezza | completata |
-| 2 | Misure e ottimizzazione seriale | Cache, profiling | |
+| 2 | Misure e ottimizzazione seriale | Cache, profiling | in corso |
 | 3 | OpenMP | Memoria condivisa, speedup, race condition | |
 | 4 | MPI a strisce + halo exchange | Memoria distribuita | |
 | 5 | MPI 2D, overlap calcolo/comunicazione | Topologie cartesiane | |
@@ -90,6 +90,22 @@ Tempi della versione seriale (`-O2`, 100 passi, minimo di 5 ripetizioni):
 I tempi variano da una ripetizione all'altra e da una sessione all'altra,
 per questo si usa il minimo. Le misure si rilanciano con `make bench`
 (script `scripts/bench.sh`).
+
+### Ottimizzazione seriale
+
+Eliminati i `%` dal ciclo interno di `step` (sostituiti da confronti con
+l'operatore ternario). Tempi in secondi, minimo di 5 ripetizioni; le celle vive
+restano identiche al riferimento.
+
+| n | baseline (s) | senza `%` (s) | speedup |
+|---|---|---|---|
+| 512 | 0.153 | 0.115 | 1.33× |
+| 1024 | 0.624 | 0.469 | 1.33× |
+| 2048 | 2.617 | 1.956 | 1.34× |
+| 4096 | 10.914 | 8.104 | 1.35× |
+
+Baseline e versione ottimizzata sono state misurate in sessioni diverse, ma il
+rapporto è stabile su tutte le dimensioni.
 
 Grafici di speedup ed efficienza: verranno aggiunti in `results/`.
 
