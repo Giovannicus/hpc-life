@@ -58,12 +58,12 @@ Il valore di riferimento per `./life_serial 1024 100` va annotato nel README.
   nel README per n = 512, 1024, 2048, 4096 (100 passi)
 - [x] Primo commit e collegamento a GitHub (tag `tappa-1-seriale` non creato,
   scelta dell'utente)
-- [ ] Tappa 2 (in corso):
+- [x] Tappa 2 (completata):
   - [x] `scripts/bench.sh` + `make bench` (5 ripetizioni, tempo minimo,
     controllo celle vive)
   - [x] eliminati i `%` dal ciclo interno di `step` (speedup ~1.34x)
-  - [ ] cache
-  - [ ] profiling
+  - [x] cache (esperimento cicli scambiati: fino a 6x più lento a n=4096)
+  - [x] profiling (gprof, `make profile`)
 
 ## Comandi utili
 ```bash

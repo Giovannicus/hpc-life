@@ -3,6 +3,7 @@ life_serial
 life_omp
 life_mpi
 life_hybrid
+life_prof
 
 # build artifacts
 *.o

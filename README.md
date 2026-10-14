@@ -27,7 +27,7 @@ ideale da parallelizzare.
 |---|---|---|---|
 | 0 | Setup: Git, gcc, Makefile | Ambiente e strumenti | completata |
 | 1 | Versione seriale | Riferimento di correttezza | completata |
-| 2 | Misure e ottimizzazione seriale | Cache, profiling | in corso |
+| 2 | Misure e ottimizzazione seriale | Cache, profiling | completata |
 | 3 | OpenMP | Memoria condivisa, speedup, race condition | |
 | 4 | MPI a strisce + halo exchange | Memoria distribuita | |
 | 5 | MPI 2D, overlap calcolo/comunicazione | Topologie cartesiane | |
@@ -106,6 +106,36 @@ restano identiche al riferimento.
 
 Baseline e versione ottimizzata sono state misurate in sessioni diverse, ma il
 rapporto è stabile su tutte le dimensioni.
+
+### Effetto della cache: ordine dei cicli
+
+Esperimento: stesso `step`, ma con i cicli scambiati (colonne all'esterno, righe
+all'interno), cioè leggendo la griglia a salti di `n` byte invece che in
+sequenza. Una sola esecuzione per misura, 100 passi, `-O2`. Le celle vive sono
+identiche, cambia solo il tempo.
+
+| n | normale (s) | scambiato (s) | rallentamento | ns/cella: normale → scambiato |
+|---|---|---|---|---|
+| 1024 | 0.472 | 0.655 | 1.4× | 4.5 → 6.2 |
+| 2048 | 1.985 | 4.075 | 2.1× | 4.7 → 9.7 |
+| 4096 | 8.033 | 49.444 | 6.2× | 4.8 → 29.5 |
+
+Conclusioni:
+
+- La griglia è salvata per righe (*row-major*): le celle di una riga sono
+  consecutive in memoria. La RAM trasferisce blocchi da 64 byte (*cache line*),
+  quindi con il ciclo interno sulle colonne una lettura porta in cache 64 celle,
+  e il prefetcher anticipa i blocchi successivi.
+- Con i cicli scambiati ogni lettura cade in una cache line diversa, e le righe
+  non restano in cache abbastanza a lungo da essere riusate: il costo per cella
+  cresce con `n`, mentre nella versione normale resta circa costante.
+- Per `n = 4096` il passo tra una riga e l'altra è 4096 byte (potenza di due),
+  probabile causa dell'ulteriore peggioramento.
+- Cache del PC di sviluppo (per core): L1d 48 KiB, L2 1.25 MiB, L3 12 MiB
+  condivisa. Le tre righe che servono a calcolare una riga (12 KB per
+  `n = 4096`) stanno in L1.
+- Regola per le tappe successive: l'ordine di accesso alla memoria conta quanto
+  il numero di operazioni.
 
 Grafici di speedup ed efficienza: verranno aggiunti in `results/`.
 
