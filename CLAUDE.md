@@ -64,6 +64,10 @@ Il valore di riferimento per `./life_serial 1024 100` va annotato nel README.
   - [x] eliminati i `%` dal ciclo interno di `step` (speedup ~1.34x)
   - [x] cache (esperimento cicli scambiati: fino a 6x più lento a n=4096)
   - [x] profiling (gprof, `make profile`)
+- [ ] Tappa 3 (in corso):
+  - [x] `src/life_omp.c` con `parallel for` su `step`, scaling 1/2/4/8 thread
+    (speedup max ~3.5x), tabelle nel README
+  - [ ] race condition: parallelizzare il conteggio finale delle celle vive
 
 ## Comandi utili
 ```bash

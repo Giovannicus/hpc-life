@@ -28,7 +28,7 @@ ideale da parallelizzare.
 | 0 | Setup: Git, gcc, Makefile | Ambiente e strumenti | completata |
 | 1 | Versione seriale | Riferimento di correttezza | completata |
 | 2 | Misure e ottimizzazione seriale | Cache, profiling | completata |
-| 3 | OpenMP | Memoria condivisa, speedup, race condition | |
+| 3 | OpenMP | Memoria condivisa, speedup, race condition | in corso |
 | 4 | MPI a strisce + halo exchange | Memoria distribuita | |
 | 5 | MPI 2D, overlap calcolo/comunicazione | Topologie cartesiane | |
 | 6 | Ibrido MPI+OpenMP | Strong/weak scaling | |
@@ -136,6 +136,55 @@ Conclusioni:
   `n = 4096`) stanno in L1.
 - Regola per le tappe successive: l'ordine di accesso alla memoria conta quanto
   il numero di operazioni.
+
+## OpenMP (Tappa 3)
+
+`src/life_omp.c` è la copia di `life_serial.c` con `#pragma omp parallel for`
+sul ciclo esterno (righe) di `step`. Compilazione: `make life_omp`
+(`-fopenmp`). Thread controllati con `OMP_NUM_THREADS`; misure con
+`./scripts/bench.sh ./life_omp <thread>` (minimo di 5 ripetizioni, 100 passi).
+Le celle vive coincidono con il riferimento in tutte le configurazioni.
+
+La macchina ha 8 thread hardware su 4 core fisici (hyper-threading).
+
+Tempo (s):
+
+| n | seriale | 1 thread | 2 | 4 | 8 |
+|---|---|---|---|---|---|
+| 512 | 0.116 | 0.123 | 0.064 | 0.040 | 0.034 |
+| 1024 | 0.471 | 0.483 | 0.288 | 0.179 | 0.135 |
+| 2048 | 1.943 | 2.133 | 1.139 | 0.755 | 0.629 |
+| 4096 | 8.504 | 8.752 | 5.363 | 3.701 | 2.902 |
+
+Speedup (tempo seriale / tempo parallelo):
+
+| n | 2 thread | 4 | 8 |
+|---|---|---|---|
+| 512 | 1.81× | 2.90× | 3.41× |
+| 1024 | 1.64× | 2.63× | 3.49× |
+| 2048 | 1.71× | 2.57× | 3.09× |
+| 4096 | 1.59× | 2.30× | 2.93× |
+
+Efficienza (speedup / numero di thread):
+
+| n | 2 thread | 4 | 8 |
+|---|---|---|---|
+| 512 | 90% | 73% | 43% |
+| 1024 | 82% | 66% | 44% |
+| 2048 | 85% | 64% | 39% |
+| 4096 | 79% | 57% | 37% |
+
+Osservazioni:
+
+- Con 1 thread OpenMP è circa uguale al seriale (3-9% più lento): è il costo
+  della parte OpenMP.
+- Lo speedup massimo è circa 3.5× con 8 thread. L'efficienza cala all'aumentare
+  dei thread; oltre i 4 core fisici i thread aggiuntivi aiutano poco.
+- Lo speedup peggiora con `n` grande: con griglie piccole i dati stanno nelle
+  cache, con `n = 4096` (32 MB) si legge dalla RAM, la cui banda è condivisa
+  tra i core. Il problema diventa *memory-bound*.
+- Con più thread dei thread hardware (16) il tempo peggiora (misura singola su
+  `n = 1024`: 0.151 s contro 0.119 s con 8).
 
 Grafici di speedup ed efficienza: verranno aggiunti in `results/`.
 
