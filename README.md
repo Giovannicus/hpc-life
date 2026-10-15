@@ -28,7 +28,7 @@ ideale da parallelizzare.
 | 0 | Setup: Git, gcc, Makefile | Ambiente e strumenti | completata |
 | 1 | Versione seriale | Riferimento di correttezza | completata |
 | 2 | Misure e ottimizzazione seriale | Cache, profiling | completata |
-| 3 | OpenMP | Memoria condivisa, speedup, race condition | in corso |
+| 3 | OpenMP | Memoria condivisa, speedup, race condition | completata |
 | 4 | MPI a strisce + halo exchange | Memoria distribuita | |
 | 5 | MPI 2D, overlap calcolo/comunicazione | Topologie cartesiane | |
 | 6 | Ibrido MPI+OpenMP | Strong/weak scaling | |
@@ -185,6 +185,28 @@ Osservazioni:
   tra i core. Il problema diventa *memory-bound*.
 - Con più thread dei thread hardware (16) il tempo peggiora (misura singola su
   `n = 1024`: 0.151 s contro 0.119 s con 8).
+
+### Race condition: il conteggio delle celle vive
+
+Il conteggio finale `alive += cur[k]` in `main` è un ciclo che si può
+parallelizzare, ma `alive` è dichiarata fuori dalla regione parallela, quindi
+è **condivisa**: tutti i thread la modificano. (In `step`, invece, le variabili
+`up`, `down`, `left`, `right` e `alive` sono dichiarate dentro il ciclo, quindi
+sono private di ogni thread e non ci sono conflitti: ogni thread scrive righe
+diverse di `next` e legge solo `cur`.)
+
+Esperimento (`n = 1024`, 100 passi, 8 thread, 5 esecuzioni):
+
+| Versione | `vive` | Corretto? |
+|---|---|---|
+| `#pragma omp parallel for` (senza protezione) | 12275, 12358, 24930, 24639, 12364 | No, cambia a ogni esecuzione |
+| `#pragma omp parallel for reduction(+:alive)` | 100277 ×5 | Sì |
+
+Senza protezione gli aggiornamenti si sovrascrivono a vicenda e il risultato
+si riduce a circa un ottavo o un quarto del valore corretto, senza alcun errore
+o warning: la regola d'oro (stesso numero di celle vive del seriale) serve a
+scoprirlo. Con `reduction(+:alive)` ogni thread somma su una copia privata e
+le copie vengono combinate alla fine, in modo sicuro.
 
 Grafici di speedup ed efficienza: verranno aggiunti in `results/`.
 

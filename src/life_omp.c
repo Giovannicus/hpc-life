@@ -61,6 +61,7 @@ int main(int argc, char *argv[])
     double end = now_seconds();
 
     long alive = 0;
+    #pragma omp parallel for reduction(+:alive)
     for (size_t k = 0; k < size; k++){
         alive += cur[k];
     }
