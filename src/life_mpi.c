@@ -1,0 +1,85 @@
+#define _POSIX_C_SOURCE 199309L
+#include <time.h>
+#include <stdio.h>
+#include <stdlib.h> 
+#include <mpi.h>
+
+static double now_seconds(void){
+      struct timespec ts;
+      clock_gettime(CLOCK_MONOTONIC, &ts);
+      return ts.tv_sec + ts.tv_nsec * 1e-9;
+}
+
+
+static void step(unsigned char *cur, unsigned char *next, int n){
+    for (int i = 0; i < n; i++){
+        int up = (i == 0) ? n -1 : i - 1;
+        int down = (i == n-1) ? 0 : i + 1;
+
+        for (int j = 0; j < n; j++){
+            int left = (j == 0) ? n - 1 : j - 1;
+            int right = (j == n-1) ? 0 : j + 1;
+            
+            size_t alive = cur[up * n + left] + cur[up * n + j] + cur[up * n + right] +
+                                  cur[i * n + left] + cur[i * n + right] +
+                                  cur[down * n + left] + cur[down * n + j] + cur[down * n + right];
+            if (alive == 3){
+                next[i * n + j] = 1;
+            } else if (alive == 2){
+                next[i * n + j] = cur[i * n + j];
+            } else {
+                next[i * n + j] = 0;
+            }
+        }
+    }
+}
+
+int main(int argc, char *argv[])
+{
+    int n = (argc > 1) ? atoi(argv[1]) : 1024;
+    int steps = (argc > 2) ? atoi(argv[2]) : 100;
+    size_t size = (size_t)n * n;
+    int rank;
+    int nprocs;
+
+    MPI_Init(&argc, &argv);
+    MPI_Comm_rank(MPI_COMM_WORLD, &rank);
+    MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
+
+    unsigned char *cur = malloc(size);
+    unsigned char *next = malloc(size);
+    if (cur == NULL || next == NULL){ fprintf(stderr, "Failed to allocate memory\n"); return 1;}
+    
+    int process_local_rows = n/nprocs;
+    int first_row = rank * process_local_rows;
+    if (n % nprocs != 0){ fprintf(stderr, "rows (%d) are not fairly assignable to processes (%d)\n",n,nprocs); return 1;};
+    printf("This %d-rank process will execute rows %d - %d\n",rank,first_row,first_row+process_local_rows-1);
+    
+    int seed = 0;
+    srand(seed);
+    for (size_t i = 0; i < size; i++){
+        cur[i] = rand() % 100 < 30;
+    }
+
+    double start = now_seconds();
+    for (int s = 0; s < steps; s++){
+        step(cur, next, n);
+        unsigned char *temp = cur;
+        cur = next;
+        next = temp;
+    }
+    double end = now_seconds();
+
+    long alive = 0;
+    for (size_t k = 0; k < size; k++){
+        alive += cur[k];
+    }
+
+    printf("n=%d steps=%d tempo=%.3fs vive=%ld ns_per_cella=%.3f\n",
+        n, steps, end - start, alive, (end - start) / size / steps * 1e9);
+    free(cur);
+    free(next);
+
+    MPI_Finalize();
+    return 0;
+}
