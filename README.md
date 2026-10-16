@@ -29,7 +29,7 @@ ideale da parallelizzare.
 | 1 | Versione seriale | Riferimento di correttezza | completata |
 | 2 | Misure e ottimizzazione seriale | Cache, profiling | completata |
 | 3 | OpenMP | Memoria condivisa, speedup, race condition | completata |
-| 4 | MPI a strisce + halo exchange | Memoria distribuita | |
+| 4 | MPI a strisce + halo exchange | Memoria distribuita | in corso |
 | 5 | MPI 2D, overlap calcolo/comunicazione | Topologie cartesiane | |
 | 6 | Ibrido MPI+OpenMP | Strong/weak scaling | |
 | 7 | Falling sand + rendering | Estensione "gioco" | |
@@ -207,6 +207,69 @@ si riduce a circa un ottavo o un quarto del valore corretto, senza alcun errore
 o warning: la regola d'oro (stesso numero di celle vive del seriale) serve a
 scoprirlo. Con `reduction(+:alive)` ogni thread somma su una copia privata e
 le copie vengono combinate alla fine, in modo sicuro.
+
+## MPI a strisce di righe (Tappa 4)
+
+`src/life_mpi.c`: la griglia è divisa in strisce di `n / nprocs` righe, una per
+processo (`n` deve essere divisibile per il numero di processi). Ogni processo
+tiene le sue righe più due righe di *halo* (sopra e sotto). A ogni passo i
+processi si scambiano le righe di confine con due `MPI_Sendrecv` (prima riga
+verso `up`, ultima verso `down`; `up` e `down` sono vicini in cerchio, quindi il
+toroide verticale è gestito dallo scambio), poi ognuno calcola le sue righe. La
+griglia iniziale usa la stessa sequenza di `rand()` del seriale (ogni processo
+scarta i numeri delle righe dei processi precedenti). Il totale delle celle vive
+si ottiene con `MPI_Reduce`.
+
+Compilazione: `mpicc -O2 -o life_mpi src/life_mpi.c`. Esecuzione:
+`mpirun --use-hwthread-cpus -np 4 ./life_mpi 1024 100` (l'opzione serve per
+usare gli 8 thread hardware come slot). Misure:
+`LAUNCHER="mpirun --use-hwthread-cpus -np 4" ./scripts/bench.sh ./life_mpi`.
+Le celle vive coincidono con il riferimento con 1, 2, 4 e 8 processi.
+
+### Confronto seriale / OpenMP / MPI
+
+Tutte le misure nella stessa sessione, 100 passi, minimo di 5 ripetizioni.
+
+Tempo (s):
+
+| n | seriale | OMP 1 | OMP 2 | OMP 4 | OMP 8 | MPI 1 | MPI 2 | MPI 4 | MPI 8 |
+|---|---|---|---|---|---|---|---|---|---|
+| 512 | 0.120 | 0.112 | 0.062 | 0.049 | 0.034 | 0.115 | 0.052 | 0.036 | 0.027 |
+| 1024 | 0.484 | 0.456 | 0.264 | 0.201 | 0.137 | 0.470 | 0.258 | 0.188 | 0.121 |
+| 2048 | 1.977 | 1.941 | 1.111 | 0.836 | 0.594 | 1.904 | 1.207 | 0.922 | 0.591 |
+| 4096 | 8.266 | 7.920 | 4.952 | 3.458 | 2.408 | 8.001 | 5.014 | 3.734 | 2.640 |
+
+Speedup (tempo seriale / tempo parallelo):
+
+| n | OMP 2 | OMP 4 | OMP 8 | MPI 2 | MPI 4 | MPI 8 |
+|---|---|---|---|---|---|---|
+| 512 | 1.94× | 2.45× | 3.53× | 2.31× | 3.33× | 4.44× |
+| 1024 | 1.83× | 2.41× | 3.53× | 1.88× | 2.57× | 4.00× |
+| 2048 | 1.78× | 2.36× | 3.33× | 1.64× | 2.14× | 3.35× |
+| 4096 | 1.67× | 2.39× | 3.43× | 1.65× | 2.21× | 3.13× |
+
+Efficienza (speedup / numero di thread o processi):
+
+| n | OMP 2 | OMP 4 | OMP 8 | MPI 2 | MPI 4 | MPI 8 |
+|---|---|---|---|---|---|---|
+| 512 | 97% | 61% | 44% | 116% | 83% | 56% |
+| 1024 | 92% | 60% | 44% | 94% | 64% | 50% |
+| 2048 | 89% | 59% | 42% | 82% | 54% | 42% |
+| 4096 | 84% | 60% | 43% | 83% | 55% | 39% |
+
+Osservazioni:
+
+- OpenMP ha uno speedup molto regolare al variare di `n` (circa 2.4× a 4 thread,
+  3.5× a 8). MPI è migliore per griglie piccole (4.4× a 8 processi per
+  `n = 512`) e un po' peggiore per griglie grandi (3.1× contro 3.4× a
+  `n = 4096`).
+- Il tetto è simile per entrambi (circa 3-4.5×): 4 core fisici con 8 thread
+  hardware e memoria condivisa. L'efficienza cala oltre i 4 core.
+- Con 1 unità MPI è circa uguale al seriale; la causa del peggioramento di MPI
+  per `n` grandi non è stata verificata.
+- Le differenze del 5% tra i due modelli sono nell'errore di misura.
+- Nei risultati di `bench.sh` per MPI il campo `threads=1` è solo il parametro
+  dello script e non riguarda i processi (indicati in `launcher`).
 
 Grafici di speedup ed efficienza: verranno aggiunti in `results/`.
 

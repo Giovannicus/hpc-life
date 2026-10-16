@@ -69,6 +69,13 @@ Il valore di riferimento per `./life_serial 1024 100` va annotato nel README.
     (speedup max ~3.5x), tabelle nel README
   - [x] race condition: conteggio finale delle celle vive, sbagliato senza e
     corretto con `reduction(+:alive)`
+- [ ] Tappa 4 (in corso):
+  - [x] `src/life_mpi.c`: strisce di righe, halo exchange con `MPI_Sendrecv`,
+    `MPI_Reduce` per le celle vive; corretto con 1, 2, 4, 8 processi
+  - [x] `bench.sh` con variabile `LAUNCHER`; confronto OMP/MPI nel README
+  - [x] `life_mpi.c` pulito: stampa finale solo dal rank 0, `MPI_Barrier`
+    prima di `start`, `MPI_Finalize` prima dei `return 1`
+  - [ ] da fare: regole `life_mpi` e `compare` nel Makefile
 
 ## Comandi utili
 ```bash

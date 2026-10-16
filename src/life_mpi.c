@@ -11,10 +11,10 @@ static double now_seconds(void){
 }
 
 
-static void step(unsigned char *cur, unsigned char *next, int n){
-    for (int i = 0; i < n; i++){
-        int up = (i == 0) ? n -1 : i - 1;
-        int down = (i == n-1) ? 0 : i + 1;
+static void step(unsigned char *cur, unsigned char *next, int n, int process_local_rows){
+    for (int i = 1; i <= process_local_rows; i++){
+        int up =  i - 1;
+        int down = i + 1;
 
         for (int j = 0; j < n; j++){
             int left = (j == 0) ? n - 1 : j - 1;
@@ -45,38 +45,67 @@ int main(int argc, char *argv[])
     MPI_Init(&argc, &argv);
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &nprocs);
-
-    unsigned char *cur = malloc(size);
-    unsigned char *next = malloc(size);
-    if (cur == NULL || next == NULL){ fprintf(stderr, "Failed to allocate memory\n"); return 1;}
     
     int process_local_rows = n/nprocs;
+    if (rank == 0){if (n % nprocs != 0){ fprintf(stderr, "rows (%d) are not fairly assignable to processes (%d)\n",n,nprocs); MPI_Finalize(); return 1;}};
+
     int first_row = rank * process_local_rows;
-    if (n % nprocs != 0){ fprintf(stderr, "rows (%d) are not fairly assignable to processes (%d)\n",n,nprocs); return 1;};
-    printf("This %d-rank process will execute rows %d - %d\n",rank,first_row,first_row+process_local_rows-1);
-    
+        
+    size_t process_local_cells = (size_t)(process_local_rows + 2) * n;
+    unsigned char *cur = malloc(process_local_cells); //cur è un buffer
+    unsigned char *next = malloc(process_local_cells);
+    if (rank == 0) {if (cur == NULL || next == NULL){ fprintf(stderr, "Failed to allocate memory\n"); MPI_Finalize(); return 1;}};
+
     int seed = 0;
     srand(seed);
-    for (size_t i = 0; i < size; i++){
-        cur[i] = rand() % 100 < 30;
+    // this does preserve result integrity, but not top optimization
+    for (size_t i = 0; i < (size_t)first_row * n; i++){
+        rand();                          // discard the values of the previous processes
+    }
+    for (size_t k = 0; k < (size_t)process_local_rows * n; k++){     
+        cur[n + k] = rand() % 100 < 30;  // my own cells, after the halo row
     }
 
+    int up   = (rank == 0) ? nprocs - 1 : rank - 1;
+    int down = (rank == nprocs - 1) ? 0 : rank + 1;
+
+
+    MPI_Barrier(MPI_COMM_WORLD);   // everyone waits here until all arrive
     double start = now_seconds();
     for (int s = 0; s < steps; s++){
-        step(cur, next, n);
+
+        //chiamata per dare la prima riga ad up e prendere sull'ultima da down
+        MPI_Sendrecv(&cur[n], n, MPI_UNSIGNED_CHAR, up, 0, // l'indice n è quello della riga locale 1
+            &cur[(size_t)(process_local_rows + 1)*n], n,MPI_UNSIGNED_CHAR, down, 0,
+            MPI_COMM_WORLD, MPI_STATUS_IGNORE); // process_local_rows+1 quella da cui deve prendere da sotto
+
+
+        //chiamata per dare l ultima riga a down e prendere sulla prima da up
+        MPI_Sendrecv(&cur[process_local_rows*n], n, MPI_UNSIGNED_CHAR, down, 0, // l'indice process_local_rows*n è quello dell ultima riga locale 
+        &cur[0], n, // 0 sarebbe la riga in cui deve prendere da sopra 
+        MPI_UNSIGNED_CHAR, up, 0, // process_local_rows+1 quella da cui deve prendere da sotto
+        MPI_COMM_WORLD, MPI_STATUS_IGNORE); 
+
+        step(cur, next, n, process_local_rows);
         unsigned char *temp = cur;
         cur = next;
         next = temp;
     }
     double end = now_seconds();
 
-    long alive = 0;
-    for (size_t k = 0; k < size; k++){
-        alive += cur[k];
+    long process_local_alive = 0;
+    for (size_t k = n; k < (size_t)n * (process_local_rows + 1);k++){
+      process_local_alive += cur[k];
     }
 
-    printf("n=%d steps=%d tempo=%.3fs vive=%ld ns_per_cella=%.3f\n",
-        n, steps, end - start, alive, (end - start) / size / steps * 1e9);
+    long global_alive = 0;
+    MPI_Reduce(&process_local_alive, &global_alive, 1, MPI_LONG,     
+        MPI_SUM, 0, MPI_COMM_WORLD);
+    if (rank == 0){
+        printf("n=%d steps=%d tempo=%.3fs vive=%ld ns_per_cella=%.3f\n",
+            n, steps, end - start, global_alive, (end - start) / size / steps * 1e9);
+    }
+    
     free(cur);
     free(next);
 

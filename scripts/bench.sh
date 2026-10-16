@@ -1,13 +1,15 @@
 #!/bin/bash
 
+# usage: [LAUNCHER="mpirun --use-hwthread-cpus -np 4"] ./scripts/bench.sh [program] [omp_threads]
 prog=${1:-./life_serial}
 threads=${2:-1}
+launcher=${LAUNCHER:-}
 
 for n in 512 1024 2048 4096; do
 times=""
 ref=""
     for r in 1 2 3 4 5; do
-        output=$(OMP_NUM_THREADS=$threads $prog $n 100)
+        output=$(OMP_NUM_THREADS=$threads $launcher $prog $n 100)
 
         v=$(echo "$output" | awk '{print $4}' | sed 's/vive=//')
         if [ -z "$ref" ]; then
@@ -20,5 +22,5 @@ ref=""
         times="$times$t"$'\n'
     done
     min=$(echo "$times" | grep . | sort -n | head -1)
-    echo "n=$n threads=${threads:-1} tempo_min=$min vive=$ref"
+    echo "n=$n threads=${threads:-1} launcher=[$launcher] tempo_min=$min vive=$ref"
 done
