@@ -1,9 +1,19 @@
 #!/bin/bash
 
-# usage: [LAUNCHER="mpirun --use-hwthread-cpus -np 4"] ./scripts/bench.sh [program] [omp_threads]
+# usage: [TAPPA=4] [PROCS=4] [LAUNCHER="mpirun --use-hwthread-cpus -np 4"] ./scripts/bench.sh [program] [omp_threads]
+# every run is also appended to results/benchmarks.csv
 prog=${1:-./life_serial}
 threads=${2:-1}
 launcher=${LAUNCHER:-}
+tappa=${TAPPA:-}
+procs=${PROCS:-1}
+version=$(basename "$prog")
+csv=results/benchmarks.csv
+
+mkdir -p results
+if [ ! -f "$csv" ]; then
+    echo "data,tappa,versione,n,processi,thread,tempo_min,vive" > "$csv"
+fi
 
 for n in 512 1024 2048 4096; do
 times=""
@@ -23,4 +33,5 @@ ref=""
     done
     min=$(echo "$times" | grep . | sort -n | head -1)
     echo "n=$n threads=${threads:-1} launcher=[$launcher] tempo_min=$min vive=$ref"
+    echo "$(date +%F),$tappa,$version,$n,$procs,$threads,$min,$ref" >> "$csv"
 done

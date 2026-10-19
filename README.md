@@ -29,7 +29,7 @@ ideale da parallelizzare.
 | 1 | Versione seriale | Riferimento di correttezza | completata |
 | 2 | Misure e ottimizzazione seriale | Cache, profiling | completata |
 | 3 | OpenMP | Memoria condivisa, speedup, race condition | completata |
-| 4 | MPI a strisce + halo exchange | Memoria distribuita | in corso |
+| 4 | MPI a strisce + halo exchange | Memoria distribuita | completata |
 | 5 | MPI 2D, overlap calcolo/comunicazione | Topologie cartesiane | |
 | 6 | Ibrido MPI+OpenMP | Strong/weak scaling | |
 | 7 | Falling sand + rendering | Estensione "gioco" | |
