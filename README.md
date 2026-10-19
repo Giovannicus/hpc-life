@@ -30,7 +30,7 @@ ideale da parallelizzare.
 | 2 | Misure e ottimizzazione seriale | Cache, profiling | completata |
 | 3 | OpenMP | Memoria condivisa, speedup, race condition | completata |
 | 4 | MPI a strisce + halo exchange | Memoria distribuita | completata |
-| 5 | MPI 2D, overlap calcolo/comunicazione | Topologie cartesiane | |
+| 5 | MPI 2D, overlap calcolo/comunicazione | Topologie cartesiane | completata |
 | 6 | Ibrido MPI+OpenMP | Strong/weak scaling | |
 | 7 | Falling sand + rendering | Estensione "gioco" | |
 
@@ -273,13 +273,139 @@ Osservazioni:
 
 Grafici di speedup ed efficienza: verranno aggiunti in `results/`.
 
+## MPI 2D con topologia cartesiana (Tappa 5)
+
+Due versioni, entrambe corrette (celle vive uguali al riferimento con 1, 2, 4
+e 8 processi):
+
+- `src/life_mpi_2d.c`: blocchi invece di strisce, scambio degli halo
+  **bloccante** (`MPI_Sendrecv`);
+- `src/life_mpi_2d_overlap.c`: stessa decomposizione, scambio **non bloccante**
+  (`MPI_Isend`/`MPI_Irecv`) con sovrapposizione di calcolo e comunicazione.
+
+Compilazione ed esecuzione: `make life_mpi_2d` e `make multi_process_2d`
+(`life_mpi_2d_overlap` e `multi_process_2d_overlap` per la seconda). Misure:
+`TAPPA=5 PROCS=4 LAUNCHER="mpirun --use-hwthread-cpus -np 4" ./scripts/bench.sh ./life_mpi_2d`,
+con i risultati accodati in `results/benchmarks.csv`.
+
+### Decomposizione in blocchi
+
+- `MPI_Dims_create` sceglie la disposizione dei processi (4 → 2×2, 8 → 4×2),
+  `MPI_Cart_create` crea il comunicatore con topologia cartesiana e bordi
+  periodici (toroide). `MPI_Cart_coords` dà a ogni processo la sua posizione
+  `(fila, colonna)`, `MPI_Cart_shift` i vicini sui quattro lati.
+- Ogni processo ha un blocco di `n/dims[0]` righe per `n/dims[1]` colonne, più
+  un halo di una cella su tutti i lati. In memoria una riga è lunga `stride =
+  colonne + 2`, e la cella `(i, j)` è in `cur[i * stride + j]`. `n` deve essere
+  divisibile per entrambe le dimensioni.
+- La posizione del blocco si ricava dalle coordinate, non dal rank:
+  `first_row = coords[0] * righe_locali`, `first_col = coords[1] * colonne_locali`.
+- Per avere la stessa griglia iniziale del seriale, ogni processo percorre
+  tutta la griglia globale `n × n` estraendo `rand()` per ogni cella e tenendo
+  solo quelle del suo blocco. Costa `n²` chiamate a `rand()` per processo,
+  fuori dal tempo misurato, e non scala.
+- Con il halo completo `step` non ha più i ternari del wraparound: il giro del
+  toroide lo fa lo scambio degli halo.
+
+### Scambio degli halo
+
+Versione bloccante, in due fasi: prima le colonne (con un tipo derivato
+`MPI_Type_vector`, perché una colonna non è contigua in memoria), poi le
+righe intere, halo laterale compreso. In questo modo gli angoli arrivano
+"di rimbalzo" dai vicini sopra e sotto. L'ordine è obbligato: invertendolo gli
+angoli sarebbero vuoti.
+
+Versione con overlap: otto scambi indipendenti, avviati tutti insieme: 4 lati
+(righe di `colonne` celle, colonne con `col_type`) e 4 angoli (una cella
+ciascuno, verso i vicini in diagonale trovati con `MPI_Cart_rank`). Siccome
+con pochi processi lo stesso vicino può ricevere più messaggi (a 2×2 i quattro
+vicini diagonali sono lo stesso processo), ogni messaggio ha un **tag** che
+indica la direzione in cui viaggia (`TAG_N`, `TAG_S`, ..., `TAG_SE`). Ciclo di
+un passo:
+
+1. avvio di 8 `MPI_Irecv` e 8 `MPI_Isend`;
+2. calcolo dell'**interno** del blocco (righe e colonne da 2 a n-1 locali), che
+   non usa l'halo, mentre i messaggi sono in viaggio;
+3. `MPI_Waitall` sulle 16 richieste;
+4. calcolo della **cornice** (prima e ultima riga, prima e ultima colonna);
+5. scambio di `cur` e `next`.
+
+`step_region` calcola un rettangolo di celle; si chiama una volta per l'interno
+e quattro volte per la cornice.
+
+### Confronto strisce / blocchi 2D (bloccanti)
+
+Stessa sessione, 100 passi, minimo di 5 ripetizioni. Tempo (s), strisce → 2D:
+
+| n | 1 processo | 2 | 4 | 8 |
+|---|---|---|---|---|
+| 512 | 0.121 → 0.085 | 0.055 → 0.044 | 0.044 → 0.031 | 0.040 → 0.025 |
+| 1024 | 0.517 → 0.359 | 0.281 → 0.204 | 0.218 → 0.153 | 0.190 → 0.135 |
+| 2048 | 1.976 → 1.458 | 1.259 → 0.813 | 0.969 → 0.655 | 0.951 → 0.624 |
+| 4096 | 8.247 → 6.265 | 5.340 → 3.620 | 3.898 → 2.717 | 3.661 → 2.368 |
+
+Speedup di ciascuna versione rispetto a sé stessa con 1 processo:
+
+| n | strisce 2 | strisce 4 | strisce 8 | 2D 2 | 2D 4 | 2D 8 |
+|---|---|---|---|---|---|---|
+| 2048 | 1.57× | 2.04× | 2.08× | 1.79× | 2.23× | 2.34× |
+| 4096 | 1.54× | 2.12× | 2.25× | 1.73× | 2.31× | 2.65× |
+
+Osservazioni:
+
+- La versione 2D è più veloce in assoluto del 25-60% a tutte le dimensioni, ma
+  **gran parte del vantaggio c'è già con 1 processo** (1.3-1.4×), dove non
+  esiste comunicazione: viene da `step` senza ternari, non dalla topologia.
+  Il contributo della decomposizione in blocchi si legge nello speedup rispetto
+  a sé stessi: a 8 processi 2.65× contro 2.25× (`n = 4096`), perché un blocco ha
+  un perimetro più piccolo di una striscia con lo stesso numero di celle e
+  quindi meno dati da scambiare.
+- L'efficienza resta bassa (circa 33% a 8 processi per il 2D) per il limite dei
+  4 core fisici e della banda di memoria, già visto in Tappa 3 e 4.
+- Per isolare davvero l'effetto della topologia andrebbe misurata anche una
+  versione a strisce con lo stesso `step` privo di ternari: non è stato fatto.
+
+### Effetto dell'overlap
+
+Stessa sessione (diversa dalla precedente), tempo (s), bloccante → overlap:
+
+| n | 1 processo | 2 | 4 | 8 |
+|---|---|---|---|---|
+| 512 | 0.088 → 0.096 | 0.076 → 0.048 | 0.032 → 0.026 | 0.038 → 0.286 |
+| 1024 | 0.364 → 0.385 | 0.304 → 0.249 | 0.153 → 0.162 | 0.113 → 0.504 |
+| 2048 | 1.486 → 1.593 | 1.126 → 1.055 | 0.727 → 0.726 | 1.003 → 1.013 |
+| 4096 | 6.392 → 6.757 | 4.443 → 4.420 | 3.129 → 2.939 | 3.153 → 2.793 |
+
+Osservazioni:
+
+- Con 1 processo l'overlap è il 6-9% più lento: è il costo di spezzare `step`
+  in interno e cornice, senza comunicazione da nascondere.
+- Con 2 e 4 processi le differenze sono piccole e senza andamento chiaro
+  (da -18% a +6%, con i tempi corti di `n = 512` poco significativi).
+- Con 8 processi le misure non sono affidabili: a `n = 512` e `1024` l'overlap
+  risulta fino a 7 volte più lento, ma una prova singola della stessa versione
+  a `n = 1024` aveva dato 0.085 s contro i 0.504 s del bench. Variazioni così
+  indicano carico sulla macchina durante la misura, non un effetto del
+  programma. Le misure non sono state ripetute: per questo non si trae
+  nessuna conclusione a 8 processi.
+- Su una sola macchina lo scambio è una copia in memoria condivisa e costa molto
+  meno del calcolo: nascondere un costo già piccolo dà poco guadagno, che qui
+  non supera l'errore di misura. Il vantaggio atteso è su cluster, dove la
+  comunicazione passa dalla rete tra nodi.
+
 ## Struttura
 
 ```
 src/        codice C
 scripts/    script Python e SLURM
-results/    misure e grafici
+results/    misure (benchmarks.csv) e grafici
 ```
+
+`results/benchmarks.csv` raccoglie tutte le misure
+(`data,tappa,versione,n,processi,thread,tempo_min,vive`), prodotte da
+`scripts/bench.sh` con le variabili `TAPPA` e `PROCS`. Misure di sessioni
+diverse non vanno confrontate tra loro (il tempo varia tra le sessioni):
+nel README sono sempre messe a confronto quelle della stessa sessione.
 
 ## Risorse
 

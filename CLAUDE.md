@@ -13,6 +13,9 @@ con rendering grafico.
 - Procedi una tappa alla volta: non anticipare le tappe successive.
 - Prima di modificare molti file, dimmi cosa stai per fare.
 - Nel codice tutto in inglese
+- Tutto va documentato: ogni tappa ha codice corretto (celle vive uguali al
+  riferimento), misure in `results/benchmarks.csv` e una sezione nel README,
+  perché alla fine ci sarà un confronto finale tra tutte le versioni.
 
 ## Scelte già fatte
 - Linguaggio: **C** per il nucleo del calcolo. **Python** solo per script,
@@ -76,6 +79,19 @@ Il valore di riferimento per `./life_serial 1024 100` va annotato nel README.
   - [x] `life_mpi.c` pulito: stampa finale solo dal rank 0, `MPI_Barrier`
     prima di `start`, `MPI_Finalize` prima dei `return 1`
   - [x] Makefile: regole `life_mpi`, `multi_process`, `compare`
+- [x] Tappa 5 (completata):
+  - [x] `src/life_mpi_2d.c`: blocchi con `MPI_Cart_create`, halo con
+    `MPI_Sendrecv` (colonne con `MPI_Type_vector`); corretto con 1, 2, 4, 8
+    processi
+  - [x] `src/life_mpi_2d_overlap.c`: 8 scambi `MPI_Isend`/`MPI_Irecv` (lati e
+    angoli, con tag), calcolo dell'interno prima di `MPI_Waitall`; corretto
+  - [x] `results/benchmarks.csv`: `bench.sh` accoda ogni misura (variabili
+    `TAPPA`, `PROCS`); misure di Tappa 1-5 raccolte
+  - [x] Risultato: il 2D è più veloce delle strisce (parte del merito è di
+    `step` senza ternari); l'overlap non dà un guadagno misurabile su una sola
+    macchina, e le misure a 8 processi sono rumorose (vedi README)
+  - [x] Makefile: regole `life_mpi_2d`, `multi_process_2d`,
+    `life_mpi_2d_overlap`, `multi_process_2d_overlap`
 
 ## Comandi utili
 ```bash

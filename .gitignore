@@ -3,6 +3,7 @@ life_serial
 life_omp
 life_mpi
 life_mpi_2d
+life_mpi_2d_overlap
 life_hybrid
 life_prof
 
