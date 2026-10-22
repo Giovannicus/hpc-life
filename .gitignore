@@ -5,6 +5,9 @@ life_mpi
 life_mpi_2d
 life_mpi_2d_overlap
 life_hybrid
+life_sand
+life_view
+life_view_hybrid
 life_prof
 
 # build artifacts

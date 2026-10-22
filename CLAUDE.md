@@ -102,8 +102,19 @@ Il valore di riferimento per `./life_serial 1024 100` va annotato nel README.
   - [x] `scripts/plot_results.py` per i grafici in `results/` (richiede
     matplotlib)
   - [x] commenti del codice tradotti in inglese
-- [ ] Tappa 7: falling sand + rendering (da fare)
-- [ ] Confronto finale di tutte le versioni in una sola sessione di misura
+- [ ] Tappa 7: falling sand + rendering (in corso)
+  - [x] 7a: `viewer/` (SDL2): `viewer.h`/`viewer.c` modulo di rendering e
+    `life_view.c` (Life seriale in una finestra); `make life_view`
+  - [ ] 7b: falling sand (`src/life_sand.c` per la logica, poi sul viewer)
+  - [x] 7c: `viewer/life_view_hybrid.c`: viewer della versione ibrida (finestra
+    solo sul rank 0, `MPI_Gather` dei blocchi, uscita sincronizzata con
+    `MPI_Bcast`); `scripts/view_bench.sh` misura calcolo/raccolta/disegno per
+    immagine in `results/view_benchmarks.csv`: il disegno domina (67-90%),
+    la configurazione migliore è con pochi processi e molti thread
+- [x] Confronto finale (`make final`, tappa `final` nel CSV): tutte le versioni
+  in una sola sessione, tabelle e grafici nel README (`make plots`). A n = 4096
+  e 8 unità: seriale 8.9 s, OpenMP 3.0 s, strisce 2.9 s, 2D 2.0 s, overlap
+  2.0 s, ibrido 1.9 s (4.65x); overlap e ibrido non migliorano su un nodo
 
 ## Comandi utili
 ```bash

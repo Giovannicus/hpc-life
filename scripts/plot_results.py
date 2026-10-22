@@ -5,6 +5,8 @@ Output (PNG files in results/):
   strong_scaling.png    speedup and efficiency of life_hybrid, fixed n
   weak_scaling.png      efficiency of life_hybrid, work per unit constant
   versions_speedup.png  speedup of each version relative to its own 1-unit time
+  final_times.png       time of every version at 8 units (rows tagged 'final')
+  final_speedup.png     speedup vs the serial version, all sizes (rows 'final')
 
 Times of different sessions are never compared: every curve is computed
 from rows of a single date, relative to the 1-unit time of the same date.
@@ -186,11 +188,116 @@ def plot_versions(rows, n=4096):
     return path
 
 
+FINAL_VERSIONS = [
+    ("life_serial", "serial"),
+    ("life_omp", "OpenMP"),
+    ("life_mpi", "MPI strips"),
+    ("life_mpi_2d", "MPI 2D"),
+    ("life_mpi_2d_overlap", "MPI 2D + overlap"),
+    ("life_hybrid", "hybrid"),
+]
+FINAL_SIZES = (512, 1024, 2048, 4096)
+
+
+def final_times(rows):
+    """{(version, n): {units: (time, procs, threads)}} from the rows tagged 'final'.
+
+    All of them come from one session (scripts/final_comparison.sh). If a
+    config was measured twice, the last row wins. For each units value the
+    fastest config is kept.
+    """
+    last = {}
+    for r in rows:
+        if r["tappa"] == "final":
+            last[(r["version"], r["n"], r["procs"], r["threads"])] = r["time"]
+    out = defaultdict(dict)
+    for (version, n, p, t), tm in last.items():
+        u = p * t
+        entry = out[(version, n)].get(u)
+        if entry is None or tm < entry[0]:
+            out[(version, n)][u] = (tm, p, t)
+    return out
+
+
+def print_final_tables(rows):
+    data = final_times(rows)
+    if not data:
+        return
+    for n in FINAL_SIZES:
+        serial = data.get(("life_serial", n), {}).get(1)
+        if not serial:
+            continue
+        print(f"\nn={n}: time (s) and speedup vs serial ({serial[0]:.3f} s)")
+        print("| version | 1 | 2 | 4 | 8 |")
+        print("|---|---|---|---|---|")
+        for version, label in FINAL_VERSIONS[1:]:
+            cells = []
+            for u in (1, 2, 4, 8):
+                e = data.get((version, n), {}).get(u)
+                cells.append(f"{e[0]:.3f} ({serial[0] / e[0]:.2f}x, {e[1]}x{e[2]})" if e else "-")
+            print(f"| {label} | " + " | ".join(cells) + " |")
+
+
+def plot_final_bars(rows, n=4096):
+    data = final_times(rows)
+    serial = data.get(("life_serial", n), {}).get(1)
+    if not serial:
+        return None
+    labels, times = [], []
+    for version, label in FINAL_VERSIONS:
+        entry = serial if version == "life_serial" else data.get((version, n), {}).get(8)
+        if entry:
+            labels.append(label + ("\n(1 unit)" if version == "life_serial" else "\n(8 units)"))
+            times.append(entry[0])
+    fig, ax = plt.subplots(figsize=(9, 4.8))
+    bars = ax.bar(labels, times, color="tab:blue")
+    for bar, tm in zip(bars, times):
+        ax.annotate(f"{tm:.2f} s\n{serial[0] / tm:.1f}x", (bar.get_x() + bar.get_width() / 2, tm),
+                    ha="center", va="bottom", fontsize=8)
+    ax.set(title=f"Final comparison, n={n}, 100 steps (one session)",
+           ylabel="time (s), lower is better", ylim=(0, serial[0] * 1.2))
+    ax.grid(axis="y", alpha=0.3)
+    fig.tight_layout()
+    path = os.path.join(OUT_DIR, "final_times.png")
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path
+
+
+def plot_final_speedup(rows):
+    data = final_times(rows)
+    if not data:
+        return None
+    fig, axes = plt.subplots(2, 2, figsize=(10, 8), sharex=True)
+    for ax, n in zip(axes.flat, FINAL_SIZES):
+        serial = data.get(("life_serial", n), {}).get(1)
+        if not serial:
+            continue
+        for version, label in FINAL_VERSIONS[1:]:
+            best = data.get((version, n), {})
+            units = sorted(best)
+            ax.plot(units, [serial[0] / best[u][0] for u in units], "-o", label=label)
+        ax.plot([1, 8], [1, 8], "k--", linewidth=1, label="ideal (vs 1 unit)")
+        ax.set(title=f"n={n}", ylabel="speedup vs serial")
+        ax.set_xticks([1, 2, 4, 8])
+        ax.grid(alpha=0.3)
+    for ax in axes[1]:
+        ax.set_xlabel("units (threads or processes or both)")
+    axes[0][0].legend(fontsize=8)
+    fig.suptitle("Final comparison: speedup vs the serial version (same session)")
+    fig.tight_layout()
+    path = os.path.join(OUT_DIR, "final_speedup.png")
+    fig.savefig(path, dpi=150)
+    plt.close(fig)
+    return path
+
+
 def main():
     rows = load_rows()
-    for plot in (plot_strong, plot_weak, plot_versions):
+    for plot in (plot_strong, plot_weak, plot_versions, plot_final_bars, plot_final_speedup):
         path = plot(rows)
         print("written" if path else "skipped (missing data)", plot.__name__, path or "")
+    print_final_tables(rows)
 
 
 if __name__ == "__main__":

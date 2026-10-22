@@ -32,7 +32,7 @@ ideale da parallelizzare.
 | 4 | MPI a strisce + halo exchange | Memoria distribuita | completata |
 | 5 | MPI 2D, overlap calcolo/comunicazione | Topologie cartesiane | completata |
 | 6 | Ibrido MPI+OpenMP | Strong/weak scaling | completata |
-| 7 | Falling sand + rendering | Estensione "gioco" | |
+| 7 | Falling sand + rendering | Estensione "gioco" | in corso |
 
 Ogni tappa completata ha un tag Git (es. `tappa-1-seriale`).
 
@@ -40,6 +40,7 @@ Ogni tappa completata ha un tag Git (es. `tappa-1-seriale`).
 
 - Linux/bash, `gcc`, `git`
 - OpenMPI (`mpicc`, `mpirun`) dalla tappa 4
+- SDL2 e `pkg-config` per il viewer (tappa 7): `sudo apt install libsdl2-dev pkg-config`
 - Python 3 con `matplotlib` per i grafici (dalla tappa 2)
 
 Su Ubuntu/Debian:
@@ -523,12 +524,233 @@ Celle per unità costanti: `n = 1024 · √unità`, quindi `n` = 1024, 1448, 204
   WSL: anche il seriale impiegava 1.2–2.3 s invece di 0.47 s per `n = 1024`).
   Le misure del CSV sono precedenti a quella fase.
 
+## Confronto finale
+
+Tutte le versioni misurate **in una sola sessione** (`make final`, cioè
+`scripts/final_comparison.sh`): macchina ferma (load average 0.01 all'inizio),
+100 passi, minimo di 5 ripetizioni, stesso lancio `mpirun --use-hwthread-cpus
+--bind-to none` per ogni versione MPI. Le righe sono nel CSV con
+`tappa = final`. Le celle vive coincidono con il riferimento in tutte le 108
+misure. Grafici e tabelle: `make plots`.
+
+![Tempi a 8 unità, n = 4096](results/final_times.png)
+
+![Speedup rispetto al seriale](results/final_speedup.png)
+
+Tempo in secondi (speedup rispetto al seriale della stessa sessione,
+configurazione processi×thread). Per ogni colonna "unità" è riportata la
+configurazione più veloce con quel numero di unità.
+
+**n = 4096** (seriale: 8.925 s)
+
+| versione | 1 unità | 2 | 4 | 8 |
+|---|---|---|---|---|
+| OpenMP | 10.527 (0.85×) | 5.404 (1.65×) | 3.836 (2.33×) | 2.965 (3.01×) |
+| MPI strisce | 8.431 (1.06×) | 5.898 (1.51×) | 4.117 (2.17×) | 2.913 (3.06×) |
+| MPI 2D | 6.725 (1.33×) | 4.131 (2.16×) | 3.255 (2.74×) | 1.979 (4.51×) |
+| MPI 2D + overlap | 6.634 (1.35×) | 4.185 (2.13×) | 2.917 (3.06×) | 2.026 (4.41×) |
+| ibrido | 6.378 (1.40×) | 4.034 (2.21×) | 3.178 (2.81×) | 1.920 (4.65×) (4×2) |
+
+**n = 2048** (seriale: 2.066 s)
+
+| versione | 1 unità | 2 | 4 | 8 |
+|---|---|---|---|---|
+| OpenMP | 2.135 (0.97×) | 1.344 (1.54×) | 0.948 (2.18×) | 0.635 (3.25×) |
+| MPI strisce | 2.178 (0.95×) | 1.351 (1.53×) | 0.980 (2.11×) | 1.219 (1.69×) ⚠ |
+| MPI 2D | 1.635 (1.26×) | 0.971 (2.13×) | 0.705 (2.93×) | 0.543 (3.80×) |
+| MPI 2D + overlap | 1.589 (1.30×) | 1.027 (2.01×) | 0.696 (2.97×) | 0.472 (4.38×) |
+| ibrido | 1.457 (1.42×) | 0.894 (2.31×) | 0.636 (3.25×) | 0.424 (4.87×) (4×2) |
+
+**n = 1024** (seriale: 0.499 s)
+
+| versione | 1 unità | 2 | 4 | 8 |
+|---|---|---|---|---|
+| OpenMP | 0.538 (0.93×) | 0.304 (1.64×) | 0.226 (2.21×) | 0.142 (3.51×) |
+| MPI strisce | 0.551 (0.91×) | 0.281 (1.78×) | 0.220 (2.27×) | 0.187 (2.67×) |
+| MPI 2D | 0.354 (1.41×) | 0.211 (2.36×) | 0.162 (3.08×) | 0.422 (1.18×) ⚠ |
+| MPI 2D + overlap | 0.374 (1.33×) | 0.217 (2.30×) | 0.155 (3.22×) | 0.087 (5.74×) |
+| ibrido | 0.352 (1.42×) | 0.188 (2.65×) | 0.154 (3.24×) | 0.093 (5.37×) (1×8) |
+
+**n = 512** (seriale: 0.122 s)
+
+| versione | 1 unità | 2 | 4 | 8 |
+|---|---|---|---|---|
+| OpenMP | 0.151 (0.81×) | 0.070 (1.74×) | 0.052 (2.35×) | 0.037 (3.30×) |
+| MPI strisce | 0.119 (1.03×) | 0.057 (2.14×) | 0.064 (1.91×) ⚠ | 0.052 (2.35×) |
+| MPI 2D | 0.084 (1.45×) | 0.045 (2.71×) | 0.032 (3.81×) | 0.029 (4.21×) |
+| MPI 2D + overlap | 0.092 (1.33×) | 0.042 (2.90×) | 0.026 (4.69×) | 0.025 (4.88×) |
+| ibrido | 0.087 (1.40×) | 0.042 (2.90×) | 0.036 (3.39×) | 0.019 (6.42×) (2×4) |
+
+I valori contrassegnati con ⚠ sono anomalie: sono molto peggiori dei valori
+vicini e di quelli delle sessioni precedenti (per esempio MPI 2D con 8 processi
+a `n = 1024`: 0.422 s, contro 0.087 s dell'overlap e circa 0.11-0.14 s delle
+misure di Tappa 5). Compaiono solo con 8 processi MPI puri (o 4 a `n = 512`),
+e il minimo di 5 ripetizioni non le elimina. Probabile causa, non verificata:
+disturbo dello scheduler sulla macchina con 8 processi che occupano tutti i
+thread hardware. Non vanno lette come proprietà delle versioni.
+
+### Cosa ha portato ogni passo (n = 4096, 8 unità)
+
+| passo | tempo (s) | speedup vs seriale | nota |
+|---|---|---|---|
+| seriale | 8.925 | 1.0× | riferimento |
+| OpenMP, 8 thread | 2.965 | 3.0× | memoria condivisa |
+| MPI a strisce, 8 processi | 2.913 | 3.1× | uguale a OpenMP |
+| MPI 2D, 8 processi | 1.979 | 4.5× | +47% rispetto alle strisce |
+| MPI 2D con overlap | 2.026 | 4.4× | nessun guadagno (−2%, rumore) |
+| ibrido (4×2) | 1.920 | 4.65× | +3% rispetto al 2D, rumore |
+
+- Il salto da MPI a strisce a MPI 2D (1.47× a 8 unità) ha due cause:
+  `step` senza ternari, che da solo dà 1.25× già con 1 processo (8.431 s → 6.725 s),
+  e i blocchi, che riducono il bordo da scambiare e danno circa 1.17× in più.
+- Una parte dello speedup totale non viene dal parallelismo: con 1 unità
+  l'ibrido è già 1.40× più veloce del seriale (6.378 s contro 8.925 s) grazie a
+  `step` senza ternari (il seriale li ha, per il wraparound) e alla struttura a
+  blocchi con halo. Lo
+  speedup puro del parallelismo dell'ibrido è 6.378 / 1.920 = 3.3×, e
+  1.40 × 3.3 = 4.65×.
+- OpenMP e MPI a strisce hanno lo stesso risultato (circa 3×) perché sono limitati
+  dallo stesso collo di bottiglia: 4 core fisici e banda di memoria condivisa.
+- Sovrapporre calcolo e comunicazione (overlap) e usare thread dentro i
+  processi (ibrido) non migliorano in modo misurabile su un solo nodo: la
+  comunicazione è già una copia in memoria. Sono tecniche pensate per
+  cluster; qui il guadagno è dentro il rumore (±5-10%).
+- Con griglie piccole (`n = 512`, 1024) l'ibrido e l'overlap arrivano a 4.9-6.4×
+  con 8 unità, più che a `n = 4096`. Ipotesi, non verificata: a `n = 512` il
+  blocco di ogni processo sta nella cache privata del core.
+- Il tempo di una stessa configurazione varia di circa ±10% tra misure (per
+  esempio OpenMP con 1 thread risulta più lento del seriale di 15% a
+  `n = 4096`): differenze sotto il 10% non sono significative.
+
+## Viewer: il Game of Life in una finestra (Tappa 7, parte 1)
+
+Finora le versioni stampavano solo il numero di celle vive. In `viewer/` c'è un
+visualizzatore con SDL2, separato da `src/` perché ha uno scopo diverso (non si
+usa per misurare: la pausa tra le immagini falserebbe i tempi).
+
+```
+viewer/viewer.h      interfaccia del modulo di rendering (dichiarazioni)
+viewer/viewer.c      implementazione con SDL2
+viewer/life_view.c   programma: Game of Life seriale + finestra
+```
+
+Il modulo di rendering non conosce il Game of Life: riceve una griglia di byte
+(riga per riga, 0 = cella vuota, altro = cella disegnata) e la disegna. Lo
+stesso modulo servirà ai prossimi viewer (falling sand, versione ibrida).
+Interfaccia, in `viewer.h`:
+
+| funzione | cosa fa |
+|---|---|
+| `viewer_open(title, grid_w, grid_h, cell_px)` | crea finestra e renderer; ritorna un puntatore (o `NULL`) |
+| `viewer_poll(v)` | legge gli eventi; ritorna 0 se l'utente chiude la finestra o preme ESC |
+| `viewer_draw(v, grid)` | disegna la griglia e aspetta `delay_ms` |
+| `viewer_set_delay(v, delay_ms)` | pausa tra le immagini (default 16 ms, circa 60 immagini al secondo) |
+| `viewer_close(v)` | libera finestra e risorse |
+
+`Viewer` è un *tipo opaco*: l'header dichiara solo che esiste (`typedef struct
+Viewer Viewer;`), i campi sono definiti in `viewer.c`.
+
+`life_view.c` è una copia di `life_serial.c` con `step` e il riempimento
+iniziale uguali (stesso seed, 30% di celle vive); il `main` è diverso: apre la
+finestra, esegue `steps` passi disegnando ogni generazione e poi tiene sullo
+schermo l'ultima immagine finché non si preme ESC. `step` esiste quindi in
+più copie nel progetto (una per versione), come scelta consapevole: un file
+condiviso avrebbe richiesto di modificare il riferimento di correttezza.
+
+Compilazione e uso: `make life_view`, poi
+`./life_view [n] [steps] [cell_px] [delay_ms]`, con default 256, 500, 3 e 16.
+Esempio: `./life_view 64 300 12 150` (griglia 64, celle da 12 pixel, circa 7
+immagini al secondo, "al rallentatore"). La finestra misura `n × cell_px`
+pixel per lato, quindi `n × cell_px` va tenuto sotto circa 900 per stare nello
+schermo. La finestra funziona in WSL grazie a WSLg.
+
+Limite noto: `viewer_draw` fa una chiamata `SDL_RenderFillRect` per ogni cella
+viva, quindi con griglie grandi (per esempio 1024 con 1 pixel per cella) il
+disegno diventa più lento del calcolo. Per quei casi servirebbe una
+`SDL_Texture` aggiornata in un colpo solo.
+
+## Viewer ibrido MPI+OpenMP (Tappa 7, parte 2)
+
+`viewer/life_view_hybrid.c` mostra in una finestra il Game of Life calcolato
+dalla versione ibrida (blocchi 2D, `step` con OpenMP). Usa lo stesso modulo
+`viewer.h`/`viewer.c`. Compilazione: `make life_view_hybrid`; esecuzione:
+`make run_view_hybrid PROCS=4 THREADS=2 VIEW_ARGS="128 400 6 40"`
+(argomenti: `n steps cell_px delay_ms`, più un quinto `hold`: con 0 il
+programma esce da solo a fine passi).
+
+Come si fa a mostrare una griglia distribuita:
+
+- **La finestra la ha solo il rank 0.** Gli altri processi non toccano SDL.
+- **Raccolta a ogni immagine:** ogni processo copia le sue celle (senza halo)
+  in un buffer contiguo; `MPI_Gather` li porta nel rank 0, che li rimette al
+  posto giusto in una griglia `n × n` (con `MPI_Cart_coords` sa dove sta il
+  blocco di ogni processo) e la disegna.
+- **Uscita sincronizzata:** il rank 0 legge la tastiera (`viewer_poll`) e a ogni
+  immagine manda l'esito a tutti con `MPI_Bcast`. Senza, il rank 0 uscirebbe e
+  gli altri resterebbero bloccati in attesa dei suoi messaggi.
+- Se `viewer_open` fallisce, il rank 0 lo comunica con un `MPI_Bcast` e tutti
+  escono insieme. I parametri (`n` tra 2 e 4096 e divisibile per le dimensioni
+  della griglia di processi) sono controllati da **tutti** i processi.
+- La griglia raccolta coincide con il riferimento: le celle vive dopo 100 passi
+  sono 100277 a `n = 1024` e 25790 a `n = 512`, con 1×1, 2×2, 4×2, 8×1 e 1×8
+  (processi × thread).
+
+### Dove va il tempo di ogni immagine
+
+`scripts/view_bench.sh` (200 passi, nessuna pausa, mediana di 3 esecuzioni)
+misura per ogni immagine il tempo di calcolo (scambio degli halo e `step`), di
+raccolta (`MPI_Gather` e montaggio) e di disegno. Le righe sono in
+`results/view_benchmarks.csv` (colonna `driver`). Le misure qui sotto usano il
+driver video `dummy` di SDL (`SDL_VIDEODRIVER=dummy`): nessuna finestra vera, e
+il disegno è quindi quello in memoria; il lancio con finestre vere interrompeva
+la sessione di WSL dopo qualche minuto, e il costo di mostrare la finestra al
+desktop è più alto (vedi sotto). Griglia con celle da 1 pixel. Tempi in
+millisecondi per immagine: calcolo / raccolta / disegno (totale).
+
+| config (processi×thread) | n = 256 | n = 512 | n = 1024 |
+|---|---|---|---|
+| 1×1 | 0.20 / 0.01 / 0.53 (0.74) | 0.90 / 0.04 / 1.93 (2.87) | 4.08 / 0.33 / 9.05 (13.5) |
+| 4×1 | 0.08 / 0.05 / 0.64 (0.76) | 0.28 / 0.14 / 2.42 (2.84) | 1.46 / 0.78 / 12.07 (14.3) |
+| 2×2 | 0.08 / 0.03 / 0.57 (0.67) | 0.34 / 0.13 / 2.45 (2.92) | 1.46 / 0.51 / 10.41 (12.4) |
+| 1×4 | 0.08 / 0.01 / 0.54 (0.63) | 0.43 / 0.07 / 2.53 (3.03) | 1.54 / 0.33 / 9.94 (11.8) |
+| 8×1 | 0.40 / 0.22 / 1.15 (1.77) | 1.71 / 1.56 / 5.76 (9.04) | 2.46 / 2.41 / 21.54 (26.4) |
+| 4×2 | 0.17 / 0.24 / 0.79 (1.19) | 1.35 / 0.46 / 4.51 (6.32) | 1.42 / 1.29 / 16.02 (18.7) |
+| 2×4 | 0.15 / 0.08 / 0.78 (1.01) | 0.59 / 0.39 / 3.41 (4.38) | 1.46 / 0.79 / 13.62 (15.9) |
+| 1×8 | 0.13 / 0.01 / 0.68 (0.82) | 1.07 / 0.09 / 3.15 (4.30) | 1.64 / 0.40 / 12.37 (14.4) |
+
+Osservazioni:
+
+- **Il disegno domina:** a `n = 1024` è il 67% del tempo di un'immagine con
+  1×1 e l'84-90% con le altre configurazioni. Il calcolo, che è la parte
+  parallelizzata, pesa il 9-13% (30% con 1×1).
+- **Il calcolo scala ma l'immagine no:** a `n = 1024` il calcolo passa da 4.08
+  ms (1×1) a 1.42-1.64 ms (circa 2.5-2.9×), ma il tempo totale di un'immagine
+  migliora al massimo di 1.14× (1×4: 11.8 ms contro 13.5 ms). Per `n = 256` e
+  `512` nessuna configurazione è meglio di 1×1 in modo significativo.
+- **Con più processi l'immagine peggiora:** con 8×1 il tempo totale è il doppio
+  di 1×1 (26.4 ms contro 13.5 ms a `n = 1024`), perché la raccolta costa 2.4 ms
+  (contro 0.3 ms) e anche il disegno rallenta (21.5 ms contro 9.0 ms). Ipotesi,
+  non verificata: i processi che aspettano nelle chiamate MPI (attesa attiva)
+  occupano i thread hardware e rubano tempo al rank 0, che deve disegnare.
+- **La scelta migliore per il viewer è pochi processi e molti thread** (1×4,
+  2×2): meno raccolta e nessun costo di MPI, lo stesso calcolo.
+- **Finestra vera contro driver `dummy`:** le dieci righe misurate con la
+  finestra vera (`driver = real`, tutto `n = 256` e le prime due configurazioni
+  di `n = 512`, poi la sessione WSL si è interrotta) hanno un disegno 3-6
+  volte più lento (per esempio 1×1 a `n = 256`: 3.3 ms contro 0.53 ms; 1×1 a
+  `n = 512`: 9.1 ms contro 1.9 ms). Con la finestra vera il disegno pesa ancora
+  di più.
+- Conclusione generale: se la parte non parallelizzabile (qui, raccolta e
+  disegno nel rank 0) è grande, accelerare il calcolo con più risorse dà un
+  guadagno molto piccolo (legge di Amdahl).
+
 ## Struttura
 
 ```
 src/        codice C
-scripts/    script (bench.sh, plot_results.py)
-results/    misure (benchmarks.csv) e grafici (png)
+viewer/     visualizzatore SDL2 (viewer.h, viewer.c, life_view.c, life_view_hybrid.c)
+scripts/    script (bench.sh, final_comparison.sh, view_bench.sh, plot_results.py)
+results/    misure (benchmarks.csv, view_benchmarks.csv) e grafici (png)
 ```
 
 `results/benchmarks.csv` raccoglie tutte le misure
