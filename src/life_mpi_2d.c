@@ -64,7 +64,7 @@ int main(int argc, char *argv[])
     int stride = process_local_cols + 2;
         
     size_t process_local_cells = (size_t)(process_local_rows + 2) * (process_local_cols + 2);
-    unsigned char *cur = malloc(process_local_cells); //cur è un buffer
+    unsigned char *cur = malloc(process_local_cells); // current generation buffer
     unsigned char *next = malloc(process_local_cells);
     if (rank == 0) {if (cur == NULL || next == NULL){ fprintf(stderr, "Failed to allocate memory\n"); MPI_Finalize(); return 1;}};
 
@@ -77,7 +77,7 @@ int main(int argc, char *argv[])
         for (j = 0; j < n; j++){
             v = rand() % 100 < 30;
             if ((i >= first_row && i < first_row + process_local_rows) && (j >= first_col && j < first_col + process_local_cols)){
-                cur[(i-first_row+1)*stride + (j-first_col+1)] = v; // convertire indici globali i j a locali
+                cur[(i-first_row+1)*stride + (j-first_col+1)] = v; // convert global indices i, j to local ones
             } 
         }
     }
@@ -89,34 +89,34 @@ int main(int argc, char *argv[])
     MPI_Cart_shift(cart_comm, 0, 1, &up, &down);     // dimension 0 = rows
     MPI_Cart_shift(cart_comm, 1, 1, &left, &right);  // dimension 1 = columns
 
-    // creo il tipo "colonna"
+    // derived datatype describing one column of the local block
     MPI_Datatype col_type;
-    MPI_Type_vector(process_local_rows, 1, stride, // prendo, per ognuno dei process_local_rows bloccchi, 1 cella (la prima) per riga a distanza stride, così simulo la presa di una colonna 
+    MPI_Type_vector(process_local_rows, 1, stride, // process_local_rows blocks of 1 cell, stride cells apart: one column
         MPI_UNSIGNED_CHAR, &col_type);
     MPI_Type_commit(&col_type);
 
     MPI_Barrier(MPI_COMM_WORLD);   // everyone waits here until all arrive
     double start = now_seconds();
     for (int s = 0; s < steps; s++){
-        // chiamate su colonne prima per evitare angoli vuoti
+        // columns first, then rows: the corners travel inside the full rows
 
-        //chiamata per dare la prima colonna a left e prendere sull'ultima halo da right
-        MPI_Sendrecv(&cur[stride+1], 1, col_type, left, 0, // l'indice stride + 1  è quello della colonna locale 1, passo 1 perche col_type prevede gia stride elementi
-            &cur[(size_t)process_local_cols + stride + 1], 1, col_type, right, 0, // stride in &cur[(size_t)process_local_cols + stride + 1] salta la riga di halo
+        // send my first column to left, receive my right halo column from right
+        MPI_Sendrecv(&cur[stride+1], 1, col_type, left, 0, // stride + 1 is local row 1, column 1; count is 1 because col_type already spans all rows
+            &cur[(size_t)process_local_cols + stride + 1], 1, col_type, right, 0, // the stride skips the top halo row; process_local_cols + 1 is the right halo column
             cart_comm, MPI_STATUS_IGNORE);
-        //chiamata per dare l ultima colonna a right e prendere sulla prima halo da left
-        MPI_Sendrecv(&cur[(size_t)process_local_cols + stride], 1, col_type, right, 0, // l'indice stride è quello della colonna locale process_local_cols
+        // send my last column to right, receive my left halo column from left
+        MPI_Sendrecv(&cur[(size_t)process_local_cols + stride], 1, col_type, right, 0, // stride + process_local_cols is local row 1, last column
             &cur[stride], 1, col_type, left, 0,
             cart_comm, MPI_STATUS_IGNORE);
 
-        //chiamata per dare la prima riga ad up e prendere sull'ultima halo da down
-        MPI_Sendrecv(&cur[stride], stride, MPI_UNSIGNED_CHAR, up, 0, // l'indice stride è quello della riga locale 1
+        // send my first row to up, receive my bottom halo row from down
+        MPI_Sendrecv(&cur[stride], stride, MPI_UNSIGNED_CHAR, up, 0, // stride is the start of local row 1
             &cur[(size_t)(process_local_rows + 1)*stride], stride,MPI_UNSIGNED_CHAR, down, 0,
-            cart_comm, MPI_STATUS_IGNORE); // process_local_rows+1 quella da cui deve prendere da sotto
-        //chiamata per dare l ultima riga a down e prendere sulla prima halo da up
-        MPI_Sendrecv(&cur[(size_t)process_local_rows*stride], stride, MPI_UNSIGNED_CHAR, down, 0, // l'indice process_local_rows*stride è quello dell ultima riga locale 
-            &cur[0], stride, // 0 sarebbe la riga in cui deve prendere da sopra 
-            MPI_UNSIGNED_CHAR, up, 0, // process_local_rows+1 quella da cui deve prendere da sotto
+            cart_comm, MPI_STATUS_IGNORE); // process_local_rows + 1 is the bottom halo row
+        // send my last row to down, receive my top halo row from up
+        MPI_Sendrecv(&cur[(size_t)process_local_rows*stride], stride, MPI_UNSIGNED_CHAR, down, 0, // process_local_rows * stride is the start of the last local row
+            &cur[0], stride, // row 0 is the top halo row
+            MPI_UNSIGNED_CHAR, up, 0, // process_local_rows + 1 is the bottom halo row
             cart_comm, MPI_STATUS_IGNORE); 
 
         step(cur, next, process_local_rows, process_local_cols, stride);

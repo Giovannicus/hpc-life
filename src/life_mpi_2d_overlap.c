@@ -66,7 +66,7 @@ int main(int argc, char *argv[])
     int stride = process_local_cols + 2;
         
     size_t process_local_cells = (size_t)(process_local_rows + 2) * (process_local_cols + 2);
-    unsigned char *cur = malloc(process_local_cells); //cur è un buffer
+    unsigned char *cur = malloc(process_local_cells); // current generation buffer
     unsigned char *next = malloc(process_local_cells);
     if (rank == 0) {if (cur == NULL || next == NULL){ fprintf(stderr, "Failed to allocate memory\n"); MPI_Finalize(); return 1;}};
 
@@ -79,7 +79,7 @@ int main(int argc, char *argv[])
         for (j = 0; j < n; j++){
             v = rand() % 100 < 30;
             if ((i >= first_row && i < first_row + process_local_rows) && (j >= first_col && j < first_col + process_local_cols)){
-                cur[(i-first_row+1)*stride + (j-first_col+1)] = v; // convertire indici globali i j a locali
+                cur[(i-first_row+1)*stride + (j-first_col+1)] = v; // convert global indices i, j to local ones
             } 
         }
     }
@@ -106,9 +106,9 @@ int main(int argc, char *argv[])
     MPI_Cart_rank(cart_comm, nb, &down_right);
     // printf("Rank %d coords (%d,%d) | up_left %d up_right %d down_left %d down_right %d\n", rank, coords[0], coords[1], up_left, up_right, down_left, down_right);
 
-    // creo il tipo "colonna"
+    // derived datatype describing one column of the local block
     MPI_Datatype col_type;
-    MPI_Type_vector(process_local_rows, 1, stride, // prendo, per ognuno dei process_local_rows bloccchi, 1 cella (la prima) per riga a distanza stride, così simulo la presa di una colonna 
+    MPI_Type_vector(process_local_rows, 1, stride, // process_local_rows blocks of 1 cell, stride cells apart: one column
         MPI_UNSIGNED_CHAR, &col_type);
     MPI_Type_commit(&col_type);
 
@@ -168,7 +168,7 @@ int main(int argc, char *argv[])
         MPI_Isend(&cur[(size_t)process_local_rows * stride + process_local_cols], 1, MPI_UNSIGNED_CHAR, down_right, TAG_SE,
             cart_comm, &reqs[15]);
 
-        // prima dell overlap, calcolo l'interno mentre si scambia l'halo 
+        // compute the interior while the halo messages are in flight
         step_region(cur, next, 2, process_local_rows-1, 2, process_local_cols-1, stride);
         MPI_Waitall(16, reqs, MPI_STATUSES_IGNORE);
         step_region(cur, next, 1, 1, 1, process_local_cols, stride);

@@ -92,6 +92,18 @@ Il valore di riferimento per `./life_serial 1024 100` va annotato nel README.
     macchina, e le misure a 8 processi sono rumorose (vedi README)
   - [x] Makefile: regole `life_mpi_2d`, `multi_process_2d`,
     `life_mpi_2d_overlap`, `multi_process_2d_overlap`
+- [x] Tappa 6 (completata):
+  - [x] `src/life_hybrid.c`: `life_mpi_2d.c` + OpenMP in `step` e nel conteggio,
+    `MPI_Init_thread` (FUNNELED); corretto con 1x1, 4x2, 2x4, 1x8
+  - [x] misure con `mpirun --use-hwthread-cpus --bind-to none` (il binding di
+    default lega 1-2 processi a un core e rallenta i thread di 3x)
+  - [x] strong scaling (n = 2048, 4096) e weak scaling (n = 1024, 1448, 2048,
+    2896) nel CSV e nel README; `bench.sh` accetta `SIZES`
+  - [x] `scripts/plot_results.py` per i grafici in `results/` (richiede
+    matplotlib)
+  - [x] commenti del codice tradotti in inglese
+- [ ] Tappa 7: falling sand + rendering (da fare)
+- [ ] Confronto finale di tutte le versioni in una sola sessione di misura
 
 ## Comandi utili
 ```bash

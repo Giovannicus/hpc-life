@@ -31,7 +31,7 @@ ideale da parallelizzare.
 | 3 | OpenMP | Memoria condivisa, speedup, race condition | completata |
 | 4 | MPI a strisce + halo exchange | Memoria distribuita | completata |
 | 5 | MPI 2D, overlap calcolo/comunicazione | Topologie cartesiane | completata |
-| 6 | Ibrido MPI+OpenMP | Strong/weak scaling | |
+| 6 | Ibrido MPI+OpenMP | Strong/weak scaling | completata |
 | 7 | Falling sand + rendering | Estensione "gioco" | |
 
 Ogni tappa completata ha un tag Git (es. `tappa-1-seriale`).
@@ -72,6 +72,10 @@ La versione seriale è **deterministica**: lanciata più volte con gli stessi
 | 1024 | 100 | 100277 |
 | 2048 | 100 | 397219 |
 | 4096 | 100 | 1599426 |
+| 1448 | 100 | 201170 |
+| 2896 | 100 | 804293 |
+
+Le ultime due dimensioni servono per il weak scaling della Tappa 6.
 
 Il valore di riferimento principale è `./life_serial 1024 100` → **100277**.
 Il conteggio è identico in tutte le 5 ripetizioni di ogni `n`.
@@ -271,7 +275,7 @@ Osservazioni:
 - Nei risultati di `bench.sh` per MPI il campo `threads=1` è solo il parametro
   dello script e non riguarda i processi (indicati in `launcher`).
 
-Grafici di speedup ed efficienza: verranno aggiunti in `results/`.
+Grafici di speedup ed efficienza: vedi la sezione della Tappa 6.
 
 ## MPI 2D con topologia cartesiana (Tappa 5)
 
@@ -393,12 +397,138 @@ Osservazioni:
   non supera l'errore di misura. Il vantaggio atteso è su cluster, dove la
   comunicazione passa dalla rete tra nodi.
 
+## Ibrido MPI+OpenMP (Tappa 6)
+
+`src/life_hybrid.c` parte da `life_mpi_2d.c` (blocchi 2D, scambio bloccante;
+non dalla versione con overlap, che non ha dato un guadagno misurabile) e
+aggiunge OpenMP dentro ogni processo:
+
+- `#pragma omp parallel for` sul ciclo esterno di `step`: i thread di un
+  processo si dividono le righe del suo blocco;
+- `reduction(+:process_local_alive)` nel conteggio finale;
+- il riempimento iniziale resta seriale (`rand()` non è sicura con più
+  thread e la sequenza deve coincidere con il seriale);
+- `MPI_Init_thread` con `MPI_THREAD_FUNNELED`: i thread lavorano solo dentro
+  `step`, le chiamate MPI le fa solo il thread principale. Se MPI non concede
+  quel livello, il programma lo segnala su stderr.
+
+Compilazione ed esecuzione: `make life_hybrid`, poi
+`make multi_hybrid PROCS=2 THREADS=4` (2 processi, 4 thread ciascuno).
+Le celle vive coincidono con il riferimento in tutte le configurazioni.
+
+### La macchina di misura
+
+Intel Core i7-1185G7, 1 socket, 4 core fisici con 2 thread hardware ciascuno
+(8 unità), cache come in Tappa 2, esecuzione in WSL. Ha senso scegliere
+processi × thread al massimo 8 (oltre c'è sovrasottoscrizione, già vista in
+Tappa 3: più thread delle unità hardware peggiorano il tempo). La regola vale
+per nodo: su un cluster vale per ogni nodo, non per l'intero sistema.
+
+### Il legame dei processi ai core (`--bind-to`)
+
+Di default `mpirun` con 1 o 2 processi lega ogni processo a un solo core, e
+tutti i suoi thread restano chiusi lì. Tempo (s) per `n = 1024`, minimo di 3
+esecuzioni:
+
+| processi × thread | default | `--bind-to none` | `--map-by slot:PE=t` |
+|---|---|---|---|
+| 8 × 1 | 0.112 | 0.138 | 0.127 |
+| 4 × 2 | 0.135 | 0.142 | 0.608 |
+| 2 × 4 | 0.276 | 0.198 | 0.148 |
+| 1 × 8 | 0.457 | 0.143 | 0.147 |
+
+Con 1 × 8 il default è 3 volte più lento (i thread condividono un core).
+`--map-by slot:PE=t` è irregolare (4 × 2: 0.608 s, valore non spiegato). **Tutte
+le misure ibride usano `mpirun --use-hwthread-cpus --bind-to none`.**
+
+### Strong scaling
+
+Problema fisso, unità (processi × thread) crescenti. Tempo minimo di 5
+ripetizioni, 100 passi, sessione unica; speedup rispetto a 1 × 1.
+
+| unità | config | n=2048 (s) | speedup | eff. | n=4096 (s) | speedup | eff. |
+|---|---|---|---|---|---|---|---|
+| 1 | 1×1 | 1.424 | 1.00× | 100% | 6.081 | 1.00× | 100% |
+| 2 | 2×1 | 0.787 | 1.81× | 90% | 3.994 | 1.52× | 76% |
+| 2 | 1×2 | 0.892 | 1.60× | 80% | 3.944 | 1.54× | 77% |
+| 4 | 4×1 | 0.672 | 2.12× | 53% | 2.834 | 2.15× | 54% |
+| 4 | 2×2 | 0.625 | 2.28× | 57% | 2.755 | 2.21× | 55% |
+| 4 | 1×4 | 0.596 | 2.39× | 60% | 2.773 | 2.19× | 55% |
+| 8 | 8×1 | 0.449 | 3.17× | 40% | 1.992 | 3.05× | 38% |
+| 8 | 4×2 | 0.441 | 3.23× | 40% | 1.922 | 3.16× | 40% |
+| 8 | 2×4 | 0.408 | 3.49× | 44% | 1.886 | 3.22× | 40% |
+| 8 | 1×8 | 0.369 | 3.86× | 48% | 1.872 | 3.25× | 41% |
+
+(I dati per `n = 512` e `1024` sono in `results/benchmarks.csv`.)
+
+### Weak scaling
+
+Celle per unità costanti: `n = 1024 · √unità`, quindi `n` = 1024, 1448, 2048,
+2896 per 1, 2, 4, 8 unità. Il tempo ideale resta costante; l'efficienza è
+`T(1 unità) / T(N unità)`. I valori di riferimento delle celle vive per
+`n = 1448` e `2896` sono nella tabella di correttezza.
+
+| unità | n | config | tempo (s) | efficienza |
+|---|---|---|---|---|
+| 1 | 1024 | 1×1 | 0.379 | 100% |
+| 2 | 1448 | 2×1 | 0.418 | 91% |
+| 2 | 1448 | 1×2 | 0.441 | 86% |
+| 4 | 2048 | 4×1 | 0.671 | 56% |
+| 4 | 2048 | 2×2 | 0.607 | 62% |
+| 4 | 2048 | 1×4 | 0.591 | 64% |
+| 8 | 2896 | 8×1 | 0.930 | 41% |
+| 8 | 2896 | 4×2 | 0.881 | 43% |
+| 8 | 2896 | 2×4 | 0.844 | 45% |
+| 8 | 2896 | 1×8 | 0.813 | 47% |
+
+### Grafici
+
+`python3 scripts/plot_results.py` legge `results/benchmarks.csv` e scrive in
+`results/` tre immagini (richiede matplotlib: `sudo apt install python3-matplotlib`):
+
+- `strong_scaling.png`: speedup ed efficienza dello strong scaling;
+- `weak_scaling.png`: efficienza del weak scaling per famiglia di configurazioni;
+- `versions_speedup.png`: speedup di ogni versione (OpenMP, MPI strisce, MPI 2D,
+  2D con overlap, ibrido) rispetto al proprio tempo con 1 unità, a `n = 4096`.
+  Ogni curva usa una sola sessione, quindi i tempi assoluti delle versioni non
+  si confrontano. Siccome ogni curva è relativa al proprio tempo con 1 unità,
+  il grafico non mostra il vantaggio assoluto di `step` senza ternari (circa
+  1.3× del 2D sulle strisce già con 1 processo).
+
+![Strong scaling](results/strong_scaling.png)
+
+![Weak scaling](results/weak_scaling.png)
+
+![Speedup delle versioni](results/versions_speedup.png)
+
+### Osservazioni
+
+- A 8 unità la differenza tra le combinazioni è piccola: per `n = 4096` tutte
+  entro il 6% (da 1.872 s con 1×8 a 1.992 s con 8×1), per `n = 2048` fino al 22%
+  (0.369 s contro 0.449 s). La tendenza è che con più thread e meno processi il
+  tempo cala leggermente, ma l'MPI puro non perde in modo netto.
+- Lo speedup massimo con 8 unità è 3.3–3.9×, in linea con OpenMP puro (3.5×) e
+  MPI puro (3.1–4.4×) di Tappa 3 e 4. L'efficienza cala sopra i 4 core fisici
+  (il secondo thread hardware di un core aggiunge poco) e probabilmente per la
+  banda di memoria condivisa: è un'ipotesi, non verificata.
+- Nel weak scaling il tempo non resta costante: a 8 unità è 2.1–2.5 volte il
+  tempo a 1 unità. Con 2 unità l'efficienza è buona (86–91%), poi cala.
+- Il vantaggio atteso dell'ibrido, cioè meno processi e quindi meno messaggi
+  sulla rete tra nodi, qui non può emergere: la macchina è un solo nodo e la
+  comunicazione è una copia in memoria. Il risultato si legge come "l'ibrido
+  non costa nulla e non guadagna su un nodo", non come "l'ibrido non serve".
+- Limiti delle misure: sessione unica per ogni tabella; i tempi di sessioni
+  diverse non si confrontano (la macchina varia di ±10% e, dopo queste
+  misure, è stata osservata una fase 3–5 volte più lenta per cause esterne a
+  WSL: anche il seriale impiegava 1.2–2.3 s invece di 0.47 s per `n = 1024`).
+  Le misure del CSV sono precedenti a quella fase.
+
 ## Struttura
 
 ```
 src/        codice C
-scripts/    script Python e SLURM
-results/    misure (benchmarks.csv) e grafici
+scripts/    script (bench.sh, plot_results.py)
+results/    misure (benchmarks.csv) e grafici (png)
 ```
 
 `results/benchmarks.csv` raccoglie tutte le misure

@@ -52,7 +52,7 @@ int main(int argc, char *argv[])
     int first_row = rank * process_local_rows;
         
     size_t process_local_cells = (size_t)(process_local_rows + 2) * n;
-    unsigned char *cur = malloc(process_local_cells); //cur è un buffer
+    unsigned char *cur = malloc(process_local_cells); // current generation buffer
     unsigned char *next = malloc(process_local_cells);
     if (rank == 0) {if (cur == NULL || next == NULL){ fprintf(stderr, "Failed to allocate memory\n"); MPI_Finalize(); return 1;}};
 
@@ -74,16 +74,16 @@ int main(int argc, char *argv[])
     double start = now_seconds();
     for (int s = 0; s < steps; s++){
 
-        //chiamata per dare la prima riga ad up e prendere sull'ultima da down
-        MPI_Sendrecv(&cur[n], n, MPI_UNSIGNED_CHAR, up, 0, // l'indice n è quello della riga locale 1
+        // send my first row to up, receive my bottom halo row from down
+        MPI_Sendrecv(&cur[n], n, MPI_UNSIGNED_CHAR, up, 0, // n is the start of local row 1
             &cur[(size_t)(process_local_rows + 1)*n], n,MPI_UNSIGNED_CHAR, down, 0,
-            MPI_COMM_WORLD, MPI_STATUS_IGNORE); // process_local_rows+1 quella da cui deve prendere da sotto
+            MPI_COMM_WORLD, MPI_STATUS_IGNORE); // process_local_rows + 1 is the bottom halo row
 
 
-        //chiamata per dare l ultima riga a down e prendere sulla prima da up
-        MPI_Sendrecv(&cur[process_local_rows*n], n, MPI_UNSIGNED_CHAR, down, 0, // l'indice process_local_rows*n è quello dell ultima riga locale 
-        &cur[0], n, // 0 sarebbe la riga in cui deve prendere da sopra 
-        MPI_UNSIGNED_CHAR, up, 0, // process_local_rows+1 quella da cui deve prendere da sotto
+        // send my last row to down, receive my top halo row from up
+        MPI_Sendrecv(&cur[process_local_rows*n], n, MPI_UNSIGNED_CHAR, down, 0, // process_local_rows * n is the start of the last local row
+        &cur[0], n, // row 0 is the top halo row
+        MPI_UNSIGNED_CHAR, up, 0, // process_local_rows + 1 is the bottom halo row
         MPI_COMM_WORLD, MPI_STATUS_IGNORE); 
 
         step(cur, next, n, process_local_rows);
